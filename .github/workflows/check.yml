@@ -1,0 +1,53 @@
+name: native checks
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  native:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install stable MoonBit SDK (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash -s latest
+      - name: Install stable MoonBit SDK (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: irm https://cli.moonbitlang.com/install/powershell.ps1 | iex
+      - name: Add MoonBit to PATH
+        shell: bash
+        run: printf '%s\n' "$HOME/.moon/bin" >> "$GITHUB_PATH"
+      - name: SDK versions
+        run: moon version --all
+      - name: Native compiler environment (Windows)
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Check
+        run: moon check --target native --deny-warn
+      - name: Build
+        run: moon build --target native --deny-warn
+      - name: Debug tests
+        run: moon test --target native --deny-warn
+      - name: Release tests
+        run: moon test --target native --release --deny-warn
+      - name: CLI subprocess contracts
+        shell: bash
+        run: |
+          python -I tests/cli_smoke.py _build/native/debug/build
+      - name: Formatting and interfaces
+        shell: bash
+        run: |
+          moon fmt
+          moon info
+          git diff --exit-code
+          test -z "$(git ls-files --others --exclude-standard -- '*.mbti')"

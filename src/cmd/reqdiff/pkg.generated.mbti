@@ -1,0 +1,13 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "miunerofrade/reqdiff/cmd/reqdiff"
+
+// Values
+
+// Errors
+type InputFailure
+
+// Types and methods
+
+// Type aliases
+
+// Traits

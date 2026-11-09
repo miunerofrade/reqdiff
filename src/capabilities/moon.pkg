@@ -1,0 +1,14 @@
+#cfg(target="native")
+import {
+  "moonbitlang/core/async",
+  "moonbitlang/core/async/http",
+  "moonbitlang/core/async/socket",
+  "moonbitlang/core/async/tls",
+  "moonbitlang/core/async/fs",
+  "moonbitlang/core/debug",
+} for "test"
+
+options(
+  "allow-experimental-packages": true,
+  targets: { "phase0_test.mbt": [ "native" ] },
+)

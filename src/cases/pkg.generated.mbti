@@ -1,0 +1,53 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "miunerofrade/reqdiff/cases"
+
+import {
+  "moonbitlang/core/json",
+}
+
+// Values
+pub let max_cases : Int32
+
+pub let max_file_bytes : Int32
+
+pub let max_line_bytes : Int32
+
+pub fn parse_cases(String, allow_write? : Bool) -> Array[Case] raise ValidationError
+
+pub fn render_plan(Array[Case]) -> Array[String]
+
+pub fn validate_env(Array[Case], Map[String, String]) -> Unit raise ValidationError
+
+pub fn validate_origin(String) -> String raise ValidationError
+
+// Errors
+pub(all) suberror ValidationError {
+  InvalidInput(Int32, String, String)
+}
+pub fn ValidationError::output(Self, &Logger) -> Unit
+pub fn ValidationError::to_string(Self) -> String
+pub impl Show for ValidationError
+
+// Types and methods
+pub(all) enum Body {
+  JsonBody(@json.Json)
+  TextBody(String)
+}
+
+pub struct Case {
+  id : String
+  meth : String
+  path : String
+  headers : Map[String, HeaderValue]
+  body : Body?
+  source_line : Int32
+}
+
+pub(all) enum HeaderValue {
+  Literal(String)
+  Env(String)
+}
+
+// Type aliases
+
+// Traits

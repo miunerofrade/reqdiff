@@ -1,0 +1,2 @@
+{"id":"health","method":"GET","path":"/health"}
+{"id":"user-1","method":"GET","path":"/users/1?view=public","headers":{"Accept":"application/json"}}

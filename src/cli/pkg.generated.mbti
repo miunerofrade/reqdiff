@@ -1,0 +1,27 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "miunerofrade/reqdiff/cli"
+
+import {
+  "miunerofrade/reqdiff/cases",
+}
+
+// Values
+pub fn evaluate(Action, String, Map[String, String]) -> String raise @cases.ValidationError
+
+pub fn help_text() -> String
+
+pub fn parse_args(Array[String]) -> Action
+
+// Errors
+
+// Types and methods
+pub(all) enum Action {
+  Display(String)
+  Validate(String, Bool)
+  Plan(String, String, Bool)
+  Invalid
+}
+
+// Type aliases
+
+// Traits

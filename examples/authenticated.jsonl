@@ -1,0 +1,1 @@
+{"id":"profile","method":"GET","path":"/profile","headers":{"Authorization":{"env":"REQDIFF_TOKEN"}}}

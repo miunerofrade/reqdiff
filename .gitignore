@@ -1,0 +1,12 @@
+_build/
+.mooncakes/
+.DS_Store
+.env
+.env.*
+!.env.example
+baselines/
+reports/
+*.local.jsonl
+*.local.json
+*.log
+/docs/development.md

@@ -1,0 +1,1 @@
+{"id":"create-fixture","method":"POST","path":"/items","body":{"name":"synthetic-example"}}
