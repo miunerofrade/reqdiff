@@ -18,11 +18,11 @@ Progress reflects working code, not intended features. No fixed commit quota.
 - [x] Review initial commit contents and privacy boundary; keep stages 0/1 as one buildable delivery.
 - [ ] Obtain separate approval before public upload.
 
-## Stage 2 — real HTTP execution (not implemented)
+## Stage 2 — real HTTP execution
 
-- [ ] `run` with explicit origin, method opt-in, no retries/redirects.
-- [ ] Request lifecycle limits, TLS verification, client cleanup and safe diagnostics.
-- [ ] Localhost integration cases for empty/large/delayed/disconnected responses.
+- [x] `run` with explicit origin, method opt-in, no retries/redirects.
+- [x] Request lifecycle limits, TLS verification, client cleanup and safe diagnostics.
+- [x] Localhost integration cases for empty/large/delayed/disconnected responses; native debug/release and CLI subprocess verification on Windows.
 
 ## Stage 3 — baseline and diff (not implemented)
 

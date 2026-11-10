@@ -51,9 +51,9 @@ async fn main {
       emit_error("invalid arguments; use --help or <command> --help")
       @env.exit(2)
     }
-    Validate(path, _) | Plan(path, _, _) => {
+    Validate(path, _) | Plan(path, _, _) | Run(path, _, _) => {
       match action {
-        Plan(_, origin, _) =>
+        Plan(_, origin, _) | Run(_, origin, _) =>
           try {
             let _ = @cases.validate_origin(origin)
           } catch {
@@ -74,11 +74,32 @@ async fn main {
           @env.exit(2)
         }
       }
-      let output = @cli.evaluate(action, text, @env.get_env_vars()) catch {
-        error => {
-          emit_error(error.to_string())
-          @env.exit(2)
+      let env = @env.get_env_vars()
+      let output = match action {
+        Run(_, base, allow_write) => {
+          let results = @runner.run(text, base, env, allow_write~) catch {
+            @cases.InvalidInput(line, field, reason) => {
+              emit_error("line \{line}, field \{field}: \{reason}")
+              @env.exit(2)
+            }
+            @runner.Failed(line, reason) => {
+              emit_error("line \{line}, field request: \{reason}")
+              @env.exit(2)
+            }
+            _ => {
+              emit_error("request execution failed")
+              @env.exit(2)
+            }
+          }
+          @runner.render_run(results)
         }
+        _ =>
+          @cli.evaluate(action, text, env) catch {
+            error => {
+              emit_error(error.to_string())
+              @env.exit(2)
+            }
+          }
       }
       println(output)
     }

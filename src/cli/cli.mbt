@@ -3,6 +3,7 @@ pub(all) enum Action {
   Display(String)
   Validate(String, Bool)
   Plan(String, String, Bool)
+  Run(String, String, Bool)
   Invalid
 }
 
@@ -11,7 +12,7 @@ fn command() -> @argparse.Command {
   @argparse.Command(
     "reqdiff",
     version="0.1.0-dev",
-    about="Offline HTTP request collection validation and planning. No requests are sent.",
+    about="Validate, plan or execute explicit HTTP request collections.",
     subcommand_required=true,
     subcommands=[
       @argparse.Command(
@@ -53,6 +54,29 @@ fn command() -> @argparse.Command {
           ),
         ],
       ),
+      @argparse.Command(
+        "run",
+        about="Send requests sequentially to an authorized origin. No retries or redirects.",
+        flags=[
+          @argparse.FlagArg(
+            "allow-write",
+            about="Explicitly permit non-GET/HEAD requests to the target.",
+          ),
+        ],
+        options=[
+          @argparse.OptionArg(
+            "base-url",
+            required=true,
+            about="Explicit HTTP(S) origin, for example http://127.0.0.1:8080",
+          ),
+        ],
+        positionals=[
+          @argparse.PositionArg(
+            "cases",
+            num_args=@argparse.ValueRange::single(),
+          ),
+        ],
+      ),
     ],
   )
 }
@@ -72,12 +96,16 @@ pub fn parse_args(argv : Array[String]) -> Action {
           let allow_write = sub.flags.get("allow-write").unwrap_or(false)
           if name == "validate" {
             Validate(file[0], allow_write)
-          } else if name == "plan" {
+          } else if name == "plan" || name == "run" {
             let base = sub.values.get("base-url").unwrap_or([])
             if base.length() != 1 {
               return Invalid
             }
-            Plan(file[0], base[0], allow_write)
+            if name == "run" {
+              Run(file[0], base[0], allow_write)
+            } else {
+              Plan(file[0], base[0], allow_write)
+            }
           } else {
             Invalid
           }
@@ -118,6 +146,10 @@ pub fn evaluate(
       }
       lines.join("\n")
     }
+    Run(_, _, _) =>
+      raise @cases.InvalidInput(
+        0, "command", "run requires the async execution adapter",
+      )
     Invalid => ""
   }
 }

@@ -19,6 +19,7 @@ pub(all) enum Action {
   Display(String)
   Validate(String, Bool)
   Plan(String, String, Bool)
+  Run(String, String, Bool)
   Invalid
 }
 

@@ -1,0 +1,28 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "miunerofrade/reqdiff/runner"
+
+// Values
+pub let max_response_bytes : Int32
+
+pub fn render_run(Array[Summary]) -> String
+
+pub let request_timeout_ms : Int32
+
+pub async fn run(String, String, Map[String, String], allow_write? : Bool) -> Array[Summary]
+
+// Errors
+pub(all) suberror RunError {
+  Failed(Int32, String)
+}
+
+// Types and methods
+pub struct Summary {
+  id : String
+  meth : String
+  status : Int32
+  body_bytes : Int32
+}
+
+// Type aliases
+
+// Traits

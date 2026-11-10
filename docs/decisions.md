@@ -6,7 +6,7 @@ Use the SDK's async/http, async/fs, argparse and JSON packages, not shell calls 
 
 ## D002 — Split pure validation from effectful adapters
 
-`cases` parses and validates Strings/Maps without filesystem, sockets or environment reads. `cli` parses explicit argv using argparse.parse_outcome and evaluates explicit input/env. `cmd/reqdiff` owns bounded file reading, real environment access, stdout/stderr and exit. `capabilities` is test-only network proof, not product transport.
+`cases` parses and validates Strings/Maps without filesystem, sockets or environment reads. `cli` parses explicit argv using argparse.parse_outcome and evaluates offline commands with explicit input/env. `runner` preflights collections and owns HTTP execution; it returns safe response summaries without printing. `cmd/reqdiff` owns bounded file reading, real environment access, stdout/stderr and exit. `capabilities` is test-only network proof and a TLS fixture, not product transport.
 
 ## D003 — Redacted offline plan
 
@@ -22,4 +22,10 @@ SDK HTTP server currently exposes plain TCP. HTTPS probes use a minimal core TCP
 
 ## D006 — Work history and publication
 
-No fabricated or empty commits. Keep specifications and actual command outcomes with the implementation. Stage0/1 remains uncommitted until user review; private contest notes stay outside this repository. LICENSE attribution for any reused code must be preserved; using SDK APIs does not mean copying competitor implementations.
+No fabricated or empty commits. Keep implementation, tests and public specifications together; detailed development/verification logs remain local and Git-ignored. Stage 0/1 was committed locally after user authorization; subsequent stage work follows the approved scope. Public push/publication requires separate authorization. Private notes stay outside version control. LICENSE attribution for any reused code must be preserved; using SDK APIs does not mean copying competitor implementations.
+
+## D007 — Bounded, sequential execution
+
+Validate the whole collection and every env reference before the first connection. A new client per case avoids cookie/connection state carrying into later cases. A single 10-second deadline includes connection, TLS, write, headers and body; defer closes every constructed client. Read only a fixed 1 MiB plus one byte and reject overflow. Requests default to identity encoding, preserving explicit Accept-Encoding without SDK decompression; the budget counts entity bytes rather than HTTP chunk framing. The SDK still owns response-header parsing/allocation.
+
+HTTP statuses are data, including redirects and errors; stage 2 has no expected-status assertions. No retries or redirect following. Results are buffered until the whole collection succeeds so execution failures produce only stderr and exit 2. This is an output contract, not rollback: earlier requests may already have effects. Body contents and response headers/reason phrases are never terminal output or persisted by run. The safe summary includes only validated public IDs/methods, numeric status and byte count.

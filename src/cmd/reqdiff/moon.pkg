@@ -2,6 +2,7 @@ import {
   "moonbitlang/core/async",
   "miunerofrade/reqdiff/cli",
   "miunerofrade/reqdiff/cases",
+  "miunerofrade/reqdiff/runner",
   "moonbitlang/core/async/fs",
   "moonbitlang/core/async/stdio",
   "moonbitlang/core/env",

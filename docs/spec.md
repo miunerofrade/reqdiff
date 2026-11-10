@@ -1,6 +1,6 @@
 # reqdiff v0.1 specification
 
-Status: stage 0/1 implemented; HTTP execution, recording and comparison remain planned.
+Status: stages 0–2 implemented; baseline recording and comparison remain planned.
 
 ## Purpose and non-goals
 
@@ -13,11 +13,12 @@ reqdiff --help
 reqdiff --version
 reqdiff validate <cases.jsonl> [--allow-write]
 reqdiff plan <cases.jsonl> --base-url <origin> [--allow-write]
+reqdiff run <cases.jsonl> --base-url <origin> [--allow-write]
 ```
 
-Both commands are strictly offline: their executable imports no HTTP or socket package. `validate` checks input and referenced environment variables. `plan` also checks the origin before reading the file and prints a redacted description. Credentials, environment variable names/values, request paths/queries, headers and bodies are omitted from plans. This is intentionally conservative; it is not a raw request preview.
+`validate` and `plan` are strictly offline: these command paths never create a network client. `validate` checks input and referenced environment variables. `plan` also checks the origin before reading the file and prints a redacted description. Credentials, environment variable names/values, request paths/queries, headers and bodies are omitted from plans. This is intentionally conservative; it is not a raw request preview.
 
-Exit codes: 0 success/help/version; 2 invalid arguments, input, environment or file I/O. Errors use stderr and do not echo raw argv, JSON, paths or env values. Unknown and future commands fail, not simulated success. Error coordinates use one-based input lines; line 0 means file/origin-level validation.
+Exit codes: 0 success/help/version; 2 invalid arguments, input, environment, file I/O or request execution failure. HTTP 3xx/4xx/5xx alone do not cause a failure. Exit code 1 is reserved for future comparisons. Errors use stderr and do not echo raw argv, JSON, paths or env values. Unknown and future commands fail, not simulated success. Error coordinates use one-based input lines; line 0 means file/origin-level validation.
 
 ## JSONL format
 
@@ -28,18 +29,26 @@ One object per nonblank line; blank lines ignored; at least one case. UTF-8 only
 ```
 
 - `id`: required string, `[A-Za-z0-9][A-Za-z0-9._-]{0,63}`, unique per file.
-- `method`: required uppercase GET, HEAD, POST, PUT, PATCH, DELETE, OPTIONS. Only GET/HEAD accepted without `--allow-write`; the flag allows validation/planning, not execution.
+- `method`: required uppercase GET, HEAD, POST, PUT, PATCH, DELETE, OPTIONS. Only GET/HEAD accepted without `--allow-write`; for `run`, the flag permits actual non-GET/HEAD requests.
 - `path`: required string starting with one `/`, optionally query. Absolute URLs, leading `//`, fragment, spaces, backslash, controls, malformed percent escapes and escaped controls/backslash rejected.
 - `headers`: optional object. Names are ASCII HTTP tokens, normalized lowercase, case-insensitive duplicates rejected. Values are control-free strings or exactly `{"env":"NAME"}`. Environment variable names follow `[A-Za-z_][A-Za-z0-9_]*`; referenced values must exist, be nonempty and control-free.
 - Protocol/cookie/proxy headers are forbidden: Host, Content-Length, Transfer-Encoding, Connection, Cookie, Proxy-Authorization, Proxy-Authenticate, Keep-Alive, TE, Trailer, Upgrade. Header names suggesting authentication/token/secret/API-key require env references. This heuristic does not prove arbitrary custom headers are secret-free.
 - `body`: optional arbitrary JSON (explicit null is a body).
 - `body_text`: optional string, mutually exclusive with `body`.
 
-`--base-url` is an HTTP(S) origin only: host with optional valid port 1..65535 and optional single trailing slash. No userinfo, paths, query, fragments, controls, spaces or backslashes. Scheme/ASCII DNS host lowercased, numeric port canonicalized. IPv4 and bracketed IPv6 supported; legacy ambiguous numeric host forms rejected. This is syntax validation, not DNS resolution, network isolation, or proof a target is authorized. Unicode host/IDNA and IPv6 zone IDs are out of scope. Encoded paths are checked once, not recursively decoded: future transport must not reinterpret validated paths.
+`--base-url` is an HTTP(S) origin only: host with optional valid port 1..65535 and optional single trailing slash. No userinfo, paths, query, fragments, controls, spaces or backslashes. Scheme/ASCII DNS host lowercased, numeric port canonicalized. IPv4 and bracketed IPv6 supported; legacy ambiguous numeric host forms rejected. This is syntax validation, not DNS resolution, network isolation, or proof a target is authorized. Unicode host/IDNA and IPv6 zone IDs are out of scope. Encoded paths are checked once, not recursively decoded: transport must not reinterpret validated paths.
 
-## Planned stage 2
+## Stage 2 execution
 
-`run`: explicit origin, sequential execution, no retries or redirects. TLS verification on. Initial target limits: 10-second whole-request deadline and 1 MiB response body limit; overflow is failure, not a truncated success. GET/HEAD default, writes explicit opt-in in isolated authorized environments. No production client uses the test-only TLS server adapter.
+`run` requires an explicit origin. It validates the complete collection and all environment references before making any connection, then executes sequentially with a fresh client per case. No retries, redirects, proxy discovery, cookie persistence or automatic decompression. TLS uses system roots and verifies certificates; there is no insecure/custom-CA CLI option. No production client uses the test-only TLS server adapter.
+
+Each request has a fixed 10-second deadline covering body serialization, connection/DNS/TLS, request write, response headers and response body. Each response body is limited to 1 MiB, enforced with a fixed limit-plus-one-byte buffer; overflow is failure, not truncated success. The budget counts entity bytes after HTTP transfer framing and before content decompression. Default `Accept-Encoding: identity` disables SDK automatic gzip negotiation; explicit Accept-Encoding is preserved without automatic decompression. Response headers/parser allocations are managed by the SDK and are not covered by this body limit.
+
+The validated path is sent unchanged, including percent escapes. Headers resolve env references only in memory. User-Agent is provided at client construction because of the SDK's per-request restriction. JSON bodies use the parser's preserved numeric representation when serialized, with default `Content-Type: application/json`; text bodies use UTF-8 and default `text/plain; charset=utf-8`. Explicit Content-Type takes precedence. A present body uses its encoded Content-Length; no body and JSON null differ. No implicit body or Content-Type is added to bodyless requests.
+
+Success output is buffered until every case completes: `RUN: N case(s); requests completed`, followed by `id METHOD status=CODE bytes=COUNT` per case. It omits the origin, paths/query, header/env names and values, response reason/headers and request/response contents. Case IDs are public output identifiers: do not put secrets in them. Bodies are consumed only for their bounded byte count, not printed or saved; binary responses can therefore be counted without implying baseline/diff support.
+
+HTTP 3xx/4xx/5xx are completed responses, not assertion or regression failures. Final statuses outside 200–599, including unsupported 101 protocol upgrades, are rejected; informational responses are handled by the SDK within the same deadline. A network/TLS/I/O, HTTP framing/protocol, timeout or body-limit error stops execution immediately, suppresses all stdout and returns 2 with safe source coordinates and a fixed description on stderr. No rollback is possible: earlier requests may have taken effect even though no success summary is printed. Every constructed client is closed on success, error and cancellation; partial connection setup is cleaned up by the SDK. GET/HEAD default and writes require explicit opt-in in isolated authorized environments.
 
 ## Planned stage 3
 
@@ -49,4 +58,4 @@ JSON comparisons ignore object key order, preserve array order and distinguish m
 
 ## Publication boundaries
 
-README/spec/development notes are AI-assisted engineering documents, not the contest application (which must be authored independently by the entrant). No automatic commits, pushes, Mooncakes publication or registration changes in stages 0/1. Module version 0.1.0 is metadata, not a published release. Windows native verified locally; Linux CI configured but not yet run.
+README/spec/decision notes are AI-assisted engineering documents, not the contest application (which must be authored independently by the entrant). Development logs remain local and Git-ignored. Local commits are made when authorized; public push, Mooncakes publication and registration changes require separate authorization. Module version 0.1.0 is metadata, not a published release. Windows native verified locally; Linux CI configured but not yet run.

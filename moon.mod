@@ -10,7 +10,7 @@ license = "Apache-2.0"
 
 keywords = [ "http", "cli", "testing" ]
 
-description = "Offline request collection validation and planning for HTTP regression workflows"
+description = "Explicit HTTP request collection validation, planning and bounded execution"
 
 source = "src"
 

@@ -1,0 +1,15 @@
+import {
+  "miunerofrade/reqdiff/cases",
+  "moonbitlang/core/async",
+  "moonbitlang/core/async/http",
+  "moonbitlang/core/async/io",
+  "moonbitlang/core/encoding/utf8",
+}
+
+import {
+  "moonbitlang/core/async/socket",
+} for "wbtest"
+
+options(
+  "allow-experimental-packages": true,
+)

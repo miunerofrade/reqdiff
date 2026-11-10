@@ -4,6 +4,7 @@ test "help version and invalid arguments are controlled" {
     Display(text) => {
       assert_true(text.contains("validate"))
       assert_true(text.contains("plan"))
+      assert_true(text.contains("run"))
       assert_false(text.contains("record"))
     }
     _ => fail("expected help")
@@ -18,6 +19,8 @@ test "help version and invalid arguments are controlled" {
       ["run"],
       ["validate"],
       ["plan", "cases.jsonl"],
+      ["run", "cases.jsonl"],
+      ["run", "--base-url", "http://localhost"],
       ["--token=private"],
     ] {
     match parse_args(args) {
@@ -25,6 +28,33 @@ test "help version and invalid arguments are controlled" {
       _ => fail("expected invalid args")
     }
   }
+}
+
+///|
+test "run parser requires an explicit origin and does not execute via offline evaluation" {
+  match
+    parse_args(["run", "x", "--base-url", "http://localhost", "--allow-write"]) {
+    Run(path, base, allow_write) => {
+      assert_eq(path, "x")
+      assert_eq(base, "http://localhost")
+      assert_true(allow_write)
+    }
+    _ => fail("expected run")
+  }
+  match parse_args(["run", "x", "--base-url", "http://localhost"]) {
+    Run(_, _, allow_write) => assert_false(allow_write)
+    _ => fail("expected run")
+  }
+  let rejected = try {
+    let _ = evaluate(Run("x", "http://localhost", false), "", {})
+    false
+  } catch {
+    @cases.InvalidInput(_, field, _) => {
+      assert_eq(field, "command")
+      true
+    }
+  }
+  assert_true(rejected)
 }
 
 ///|

@@ -6,6 +6,7 @@ import {
   "moonbitlang/core/async/tls",
   "moonbitlang/core/async/fs",
   "moonbitlang/core/debug",
+  "miunerofrade/reqdiff/runner",
 } for "test"
 
 options(

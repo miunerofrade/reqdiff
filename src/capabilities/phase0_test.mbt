@@ -1,4 +1,4 @@
-// Phase 0 native capability probes only. No product commands or external hosts.
+// Local native capability probes and product TLS rejection. No external hosts.
 // All listeners bind IPv4 loopback with port 0; each test owns its resources.
 
 ///|
@@ -252,6 +252,39 @@ async test "phase0 HTTPS rejects unrelated local CA rather than disabling verifi
           )
           true
         }
+      }
+      assert_true(rejected)
+    }
+  }
+}
+
+///|
+async test "product runner rejects untrusted localhost TLS with default system roots" {
+  @async.with_timeout(10000) <| () => {
+    @async.with_task_group() <| group => {
+      let server = @socket.TcpServer(@socket.Addr::parse("127.0.0.1:0"))
+      defer server.close()
+      group.spawn_bg(no_wait=true, allow_failure=true) <| () => {
+        let (tcp, _) = server.accept()
+        defer tcp.close()
+        let tls = local_tls_server(tcp)
+        defer tls.close()
+        let _ = tls.read()
+      }
+      let rejected = try {
+        let _ = @runner.run(
+          "{\"id\":\"tls\",\"method\":\"GET\",\"path\":\"/\"}",
+          "https://127.0.0.1:\{server.addr.port()}",
+          Map([]),
+        )
+        false
+      } catch {
+        @runner.Failed(line, reason) => {
+          assert_eq(line, 1)
+          assert_eq(reason, "connection, TLS or I/O failure")
+          true
+        }
+        error => raise error
       }
       assert_true(rejected)
     }
