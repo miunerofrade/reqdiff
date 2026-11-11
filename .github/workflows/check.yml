@@ -21,11 +21,24 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: irm https://cli.moonbitlang.com/install/powershell.ps1 | iex
-      - name: Add MoonBit to PATH
+      - name: Add MoonBit to PATH (Linux)
+        if: runner.os == 'Linux'
         shell: bash
         run: printf '%s\n' "$HOME/.moon/bin" >> "$GITHUB_PATH"
+      - name: Add MoonBit to PATH (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $moonBin = Join-Path $HOME '.moon\bin'
+          Add-Content -Path $env:GITHUB_PATH -Value $moonBin -Encoding utf8
+          if (-not (Test-Path (Join-Path $moonBin 'moon.exe'))) {
+            throw "moon.exe not found in $moonBin"
+          }
       - name: SDK versions
-        run: moon version --all
+        shell: pwsh
+        run: |
+          Get-Command moon
+          moon version --all
       - name: Native compiler environment (Windows)
         if: runner.os == 'Windows'
         uses: ilammy/msvc-dev-cmd@v1
