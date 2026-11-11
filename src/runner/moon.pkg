@@ -1,8 +1,10 @@
 import {
+  "miunerofrade/reqdiff/baseline",
   "miunerofrade/reqdiff/cases",
   "moonbitlang/core/async",
   "moonbitlang/core/async/http",
   "moonbitlang/core/async/io",
+  "moonbitlang/core/json",
   "moonbitlang/core/encoding/utf8",
 }
 

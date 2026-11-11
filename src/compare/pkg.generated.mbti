@@ -1,0 +1,49 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "miunerofrade/reqdiff/compare"
+
+import {
+  "miunerofrade/reqdiff/baseline",
+}
+
+// Values
+pub fn compare(Array[@baseline.Record], Array[@baseline.Record], Array[Pointer]) -> Report
+
+pub fn compile_ignores(Array[String]) -> Array[Pointer] raise CompareError
+
+pub let max_report_records : Int32
+
+// Errors
+pub(all) suberror CompareError {
+  InvalidPointer(Int32, String)
+}
+pub fn CompareError::to_string(Self) -> String
+
+// Types and methods
+pub(all) enum Difference {
+  StatusDifference(Int32, Int32)
+  BodyKindDifference(String, String)
+  JsonBodyDifference(Int32)
+  TextBodyDifference
+}
+
+pub(all) struct Pointer {
+  tokens : Array[String]
+}
+
+pub struct RecordDifference {
+  id : String
+  meth : String
+  differences : Array[Difference]
+}
+
+pub struct Report {
+  cases : Int32
+  records : Array[RecordDifference]
+  total_differences : Int32
+  differing_cases : Int32
+  truncated : Bool
+}
+
+// Type aliases
+
+// Traits

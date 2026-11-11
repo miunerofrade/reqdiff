@@ -20,6 +20,8 @@ pub(all) enum Action {
   Validate(String, Bool)
   Plan(String, String, Bool)
   Run(String, String, Bool)
+  Record(String, String, String, Bool, Bool, Bool)
+  Diff(String, String, String, Array[String], String, Bool)
   Invalid
 }
 

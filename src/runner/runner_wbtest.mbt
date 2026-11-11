@@ -41,7 +41,8 @@ async fn wb_expect_failure(
     #|{"id":"broken","method":"GET","path":"/broken?PRIVATE=1"}
     #|{"id":"later","method":"GET","path":"/must-not-run"}
   try {
-    let _ = run_with_deadline(text, base, {}, false, timeout_ms)
+    let (origin, cases) = preflight(text, base, Map([]))
+    let _ = execute_all(origin, cases, Map([]), timeout_ms, NoBodies)
     fail("expected the first request to fail")
   } catch {
     Failed(line, actual) => {
@@ -493,6 +494,202 @@ async test "runner preflights origin whole file write permission and env before 
       }
       // Accept probes the listening socket/backlog, not just a scheduled counter.
       wb_no_connection(server)
+    }
+  }
+}
+
+///|
+// One case per classification branch; responses arrive on fresh connections.
+async test "capture classifies empty json null and text bodies" {
+  @async.with_timeout(10000) <| () => {
+    @async.with_task_group() <| group => {
+      let server = @socket.TcpServer(@socket.Addr::parse("127.0.0.1:0"))
+      defer server.close()
+      let responses : Array[Bytes] = [
+        b"HTTP/1.1 204 No Content\r\nContent-Length: 0\r\n\r\n", b"HTTP/1.1 200 OK\r\nContent-Type: application/json; charset=utf-8\r\nContent-Length: 4\r\n\r\nnull",
+        b"HTTP/1.1 200 OK\r\nContent-Type: text/vnd.custom+json\r\nContent-Length: 2\r\n\r\n[]",
+        b"HTTP/1.1 200 OK\r\nContent-Length: 7\r\n\r\nplainOK",
+      ]
+      group.spawn_bg() <| () => {
+        for response in responses {
+          let (tcp, _) = server.accept()
+          defer tcp.close()
+          let _ = @http.ServerConnection::new(tcp).read_request()
+          tcp.write(response[:])
+          assert_eq(tcp.read(), None)
+        }
+      }
+      let text =
+        #|{"id":"empty","method":"GET","path":"/e"}
+        #|{"id":"json-null","method":"GET","path":"/j"}
+        #|{"id":"suffix-json","method":"GET","path":"/s"}
+        #|{"id":"text","method":"GET","path":"/t"}
+      let records = capture(text, wb_origin(server), Map([]), mode=AutoBodies)
+      assert_eq(records.length(), 4)
+      assert_eq(records[0].status, 204)
+      match records[0].body {
+        Empty => ()
+        _ => fail("expected empty")
+      }
+      match records[1].body {
+        JsonBody(value) => assert_true(value is Null)
+        _ => fail("expected json null")
+      }
+      match records[2].body {
+        JsonBody(_) => ()
+        _ => fail("expected +json classification")
+      }
+      match records[3].body {
+        TextBody(body) => assert_eq(body, "plainOK")
+        _ => fail("expected text")
+      }
+      for i, record in records {
+        assert_eq(record.meth, "GET")
+        assert_true(record.fingerprint.has_prefix("sha256:"))
+        ignore(i)
+      }
+    }
+  }
+}
+
+///|
+async test "capture rejects malformed json non-utf8 and compressed bodies" {
+  @async.with_timeout(10000) <| () => {
+    let fixtures = [
+      (
+        b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 7\r\n\r\n{\"a\":,}",
+        "response declared JSON but is not valid JSON",
+      ),
+      (
+        b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\n\xff\xfe", "response is not valid UTF-8 text",
+      ),
+      (
+        b"HTTP/1.1 200 OK\r\nContent-Encoding: gzip\r\nContent-Length: 2\r\n\r\nzz",
+        "response content encoding is not identity",
+      ),
+    ]
+    for fixture in fixtures {
+      let (response, reason) = fixture
+      @async.with_task_group() <| group => {
+        let server = @socket.TcpServer(@socket.Addr::parse("127.0.0.1:0"))
+        defer server.close()
+        group.spawn_bg() <| () => {
+          let (tcp, _) = server.accept()
+          defer tcp.close()
+          let _ = @http.ServerConnection::new(tcp).read_request()
+          tcp.write(response[:])
+          assert_eq(tcp.read(), None)
+        }
+        try {
+          let _ = capture(
+            "{\"id\":\"broken\",\"method\":\"GET\",\"path\":\"/b\"}",
+            wb_origin(server),
+            Map([]),
+            mode=AutoBodies,
+          )
+          fail("expected classification failure")
+        } catch {
+          Failed(line, actual) => {
+            assert_eq(line, 1)
+            assert_eq(actual, reason)
+          }
+          error => raise error
+        }
+      }
+    }
+  }
+}
+
+///|
+async test "capture without bodies leaves responses uncaptured" {
+  @async.with_timeout(10000) <| () => {
+    @async.with_task_group() <| group => {
+      let server = @socket.TcpServer(@socket.Addr::parse("127.0.0.1:0"))
+      defer server.close()
+      group.spawn_bg() <| () => {
+        let (tcp, _) = server.accept()
+        defer tcp.close()
+        let _ = @http.ServerConnection::new(tcp).read_request()
+        tcp.write(
+          b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 2\r\n\r\n{}",
+        )
+        assert_eq(tcp.read(), None)
+      }
+      let records = capture(
+        "{\"id\":\"a\",\"method\":\"GET\",\"path\":\"/\"}",
+        wb_origin(server),
+        Map([]),
+        mode=NoBodies,
+      )
+      assert_eq(records.length(), 1)
+      assert_eq(records[0].status, 200)
+      match records[0].body {
+        Uncaptured => ()
+        _ => fail("expected uncaptured body")
+      }
+    }
+  }
+}
+
+///|
+async test "capture enforces the aggregate auto body budget" {
+  @async.with_timeout(20000) <| () => {
+    let megabyte = Bytes::makei(1048576, _ => b'x')
+    for extra in [0, 1] {
+      let count = 8 + extra
+      let builder = StringBuilder()
+      for i in 0..<count {
+        builder.write_string(
+          "{\"id\":\"case-\{i}\",\"method\":\"GET\",\"path\":\"/\{i}\"}\n",
+        )
+      }
+      let text = builder.to_string()
+      @async.with_task_group() <| group => {
+        let server = @socket.TcpServer(@socket.Addr::parse("127.0.0.1:0"))
+        defer server.close()
+        let header = @utf8.encode(
+          "HTTP/1.1 200 OK\r\nContent-Length: 1048576\r\n\r\n",
+        )
+        let wire = Bytes::makei(header.length() + megabyte.length(), i => {
+          if i < header.length() {
+            header[i]
+          } else {
+            megabyte[i - header.length()]
+          }
+        })
+        group.spawn_bg() <| () => {
+          for _ in 0..<count {
+            let (tcp, _) = server.accept()
+            defer tcp.close()
+            let _ = @http.ServerConnection::new(tcp).read_request()
+            tcp.write(wire[:])
+            // Overflow handling may close with a reset before the final byte.
+            let _ = tcp.read()
+          }
+        }
+        if extra == 0 {
+          let records = capture(
+            text,
+            wb_origin(server),
+            Map([]),
+            mode=AutoBodies,
+          )
+          assert_eq(records.length(), 8)
+        } else {
+          try {
+            let _ = capture(text, wb_origin(server), Map([]), mode=AutoBodies)
+            fail("expected aggregate budget failure")
+          } catch {
+            Failed(line, reason) => {
+              assert_eq(line, 9)
+              assert_eq(
+                reason, "captured response bodies exceed 8 MiB in total",
+              )
+            }
+            error => raise error
+          }
+        }
+      }
     }
   }
 }

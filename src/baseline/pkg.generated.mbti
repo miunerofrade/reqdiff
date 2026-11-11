@@ -1,0 +1,72 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "miunerofrade/reqdiff/baseline"
+
+import {
+  "miunerofrade/reqdiff/cases",
+  "moonbitlang/core/json",
+}
+
+// Values
+pub fn check_match(Baseline, Array[@cases.Case]) -> Unit raise BaselineError
+
+pub fn encode(Baseline) -> String
+
+pub let max_baseline_bytes : Int32
+
+pub let max_records : Int32
+
+pub fn parse(String) -> Baseline raise BaselineError
+
+pub fn request_fingerprint(@cases.Case) -> String
+
+pub fn sha256_hex(Bytes) -> String
+
+// Errors
+pub(all) suberror BaselineError {
+  InvalidBaseline(Int32, String, String)
+  RequestMismatch(Int32)
+}
+pub fn BaselineError::output(Self, &Logger) -> Unit
+pub fn BaselineError::to_string(Self) -> String
+pub impl Show for BaselineError
+
+// Types and methods
+pub struct Baseline {
+  mode : BodyMode
+  records : Array[Record]
+}
+pub fn Baseline::make(BodyMode, Array[Record]) -> Self
+pub fn Baseline::mode(Self) -> BodyMode
+pub fn Baseline::records(Self) -> Array[Record]
+
+#derive(Eq)
+pub(all) enum BodyMode {
+  NoBodies
+  AutoBodies
+}
+pub fn BodyMode::equal(Self, Self) -> Bool
+pub fn BodyMode::not_equal(Self, Self) -> Bool
+
+pub struct Record {
+  id : String
+  meth : String
+  fingerprint : String
+  status : Int32
+  body : RecordedBody
+}
+pub fn Record::body(Self) -> RecordedBody
+pub fn Record::id(Self) -> String
+pub fn Record::make(String, String, String, Int32, RecordedBody) -> Self
+pub fn Record::meth(Self) -> String
+pub fn Record::status(Self) -> Int32
+
+pub(all) enum RecordedBody {
+  Uncaptured
+  Empty
+  JsonBody(@json.Json)
+  TextBody(String)
+}
+
+// Type aliases
+
+// Traits

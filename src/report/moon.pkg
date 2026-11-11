@@ -1,0 +1,8 @@
+import {
+  "miunerofrade/reqdiff/compare",
+}
+
+import {
+  "miunerofrade/reqdiff/baseline",
+  "moonbitlang/core/json",
+} for "wbtest"

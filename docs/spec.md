@@ -50,11 +50,42 @@ Success output is buffered until every case completes: `RUN: N case(s); requests
 
 HTTP 3xx/4xx/5xx are completed responses, not assertion or regression failures. Final statuses outside 200–599, including unsupported 101 protocol upgrades, are rejected; informational responses are handled by the SDK within the same deadline. A network/TLS/I/O, HTTP framing/protocol, timeout or body-limit error stops execution immediately, suppresses all stdout and returns 2 with safe source coordinates and a fixed description on stderr. No rollback is possible: earlier requests may have taken effect even though no success summary is printed. Every constructed client is closed on success, error and cancellation; partial connection setup is cleaned up by the SDK. GET/HEAD default and writes require explicit opt-in in isolated authorized environments.
 
-## Planned stage 3
+## Stage 3 baseline and diff
 
-`record --out` and `diff --baseline`: versioned snapshots, no overwrite without explicit force, match by case ID plus non-secret request semantics; different origins allowed for environment comparison. Save only explicitly requested response state/body, not credentials/cookies. Snapshots may contain private business data even after redaction.
+Commands:
 
-JSON comparisons ignore object key order, preserve array order and distinguish missing/null/types. Numeric policy must be verified and specified before release; no claim of arbitrary precision via Double conversion. Non-JSON UTF-8 text compared exactly; binary response bodies initially unsupported. Explicit JSON Pointer ignores (with ~0/~1 escaping) apply symmetrically, without wildcard scripts. Report truncation is explicit. Future exit code 1 means differences, 2 execution/configuration error (error takes precedence).
+```text
+reqdiff record <cases.jsonl> --base-url <origin> --out <file> [--body none|auto] [--force] [--allow-write]
+reqdiff diff <cases.jsonl> --base-url <origin> --baseline <file> [--ignore <pointer>]... [--format terminal|json] [--allow-write]
+```
+
+`record` executes the collection exactly like `run` (same preflight, ordering, deadline, limits) and writes a versioned baseline. Default `--body none` records only status codes; explicit `--body auto` also records response bodies, which may contain private business data — the help text says so. `diff` re-executes the collection and compares against the baseline; it uses the baseline's recorded body mode and has no `--body` flag.
+
+### Baseline format (v1)
+
+A single strict JSON object: `version` (exactly 1), `body_mode` (`none`|`auto`), `records` (1..100). Each record: `id` (same rule as cases), `method`, `fingerprint` (`sha256:<64 hex>`), `status` (200..599), and `body` only when `body_mode` is `auto`: `{"kind":"empty"}`, `{"kind":"json","value":<any JSON incl. null>}`, or `{"kind":"text","text":<string>}`. An absent `body` with mode `none` means uncaptured; JSON `null` inside `kind:"json"` is a captured JSON null; `kind:"empty"` is a zero-byte body. Unknown fields, wrong version, duplicate keys (recursively), duplicate IDs, invalid status/kind or mismatched body presence are rejected. Baseline files are bounded: regular file, ≤32 MiB read with a limit-plus-one-byte buffer, JSON depth ≤64, numbers parsed with preserved representation. Recorded bodies originate from capture, which enforces the same 1 MiB per-response limit as `run` plus an 8 MiB aggregate body budget for the whole suite in `auto` mode.
+
+### Request matching
+
+Records match cases by unique ID plus a request fingerprint: SHA-256 over a canonical projection of `v1`, method, as-validated path (including query and percent escapes), literal non-credential headers (lowercased names, sorted, `name:value`), and body kind/content (JSON bodies in stringify form with preserved numbers). Env-referenced headers and credential headers (auth/token/secret/api-key/apikey name heuristic) are excluded entirely; defaults the runner derives (Host, Content-Length, User-Agent, Accept-Encoding) are not part of identity. The fingerprint is stored as a digest — never the projection itself — but a digest is NOT redaction: low-entropy values remain guessable and baselines must still be treated as private. Missing/extra IDs, fingerprint or method mismatch are configuration errors (exit 2) detected BEFORE any connection. Different origins are allowed between record and diff; that is the intended environment-comparison use.
+
+### Capture classification
+
+With `--body auto`: zero-length bodies are `empty`; otherwise a JSON media type (`application/json` or `+json` suffix, parameters allowed) must strictly parse (duplicate keys, depth, malformed JSON are errors); all other responses must be strict UTF-8 (BOM preserved, invalid sequences are errors); a non-identity `Content-Encoding` is an error. No byte replacement, no fallback to success, no binary support. JSON null is preserved distinctly from empty.
+
+### Comparison and reports
+
+Status is always compared. JSON bodies ignore object key order, preserve array order, and distinguish missing/null/type. Numbers compare by exact decimal value canonicalized from the preserved representation (sign, significant digits, decimal exponent): `1 = 1.0 = 1e0`, `-0 = 0`, huge exponents are compared without expansion and without Double conversion. Text bodies compare exactly. `--ignore <pointer>` accepts repeated strict JSON Pointers (empty string = root, `~0`/`~1` escapes, canonical non-negative array indexes, `-` rejected, no wildcards/fragments); unknown pointers are no-ops; ignores apply symmetrically to both trees by skipping subtrees (never deleting elements, so indexes do not shift); ignoring the root masks only the JSON body, never the status. Explicitly ignored subtrees suppress missing/null/type differences inside them.
+
+Reports (terminal and `--format json`) contain only public case IDs, difference categories and counts, numeric statuses, and explicit truncation markers. They never print bodies, JSON keys/pointers/paths, request paths/queries, headers, env names/values or response headers. Output order follows the case file. Terminal summary: `DIFF: N case(s); M difference(s)` with per-record category lines, truncated at a fixed line budget with an explicit `report truncated` marker; identical suites print `IDENTICAL: N case(s); no differences`. `record` prints `RECORDED: N case(s)`; the output path is not echoed.
+
+### Exit codes
+
+0: identical (diff) or baseline written (record). 1: differences found (diff only). 2: invalid arguments/input/environment, baseline file problems, request matching failure, capture/execution error — and 2 takes precedence: an execution error after earlier differences yields exit 2 with no stdout. Differences do not stop later cases; execution errors still fail fast as in `run`.
+
+### Baseline file writing
+
+`record` writes to a unique temporary file in the destination directory, then `sync`, close, and atomic rename onto the target. Without `--force` an existing target is refused before any connection; with `--force` rename replaces it. Failure at any step removes the temporary file and never leaves a partial baseline. No durability claim beyond successful rename is made. Baselines are private data: `.gitignore` excludes baseline directories, and no automatic commit/push covers them.
 
 ## Publication boundaries
 

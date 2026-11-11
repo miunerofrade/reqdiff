@@ -1,8 +1,21 @@
 // Generated using `moon info`, DON'T EDIT IT
 package "miunerofrade/reqdiff/runner"
 
+import {
+  "miunerofrade/reqdiff/baseline",
+  "miunerofrade/reqdiff/cases",
+}
+
 // Values
+pub async fn capture(String, String, Map[String, String], mode~ : @baseline.BodyMode, allow_write? : Bool) -> Array[@baseline.Record]
+
+pub async fn capture_cases(String, Array[@cases.Case], Map[String, String], mode~ : @baseline.BodyMode) -> Array[@baseline.Record]
+
+pub let max_capture_bytes : Int32
+
 pub let max_response_bytes : Int32
+
+pub fn preflight(String, String, Map[String, String], allow_write? : Bool) -> (String, Array[@cases.Case]) raise @cases.ValidationError
 
 pub fn render_run(Array[Summary]) -> String
 

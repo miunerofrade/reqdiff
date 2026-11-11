@@ -355,10 +355,11 @@ def main():
             assert contains in combined, (args, combined)
             for secret in (*secrets, *forbidden):
                 assert secret.casefold() not in combined.casefold(), (args, "secret leaked")
-            if args and args[0] == "run":
+            if args and args[0] in ("run", "record", "diff"):
                 for origin_part in ("127.0.0.1", "localhost", "http://", "https://"):
                     assert origin_part not in combined.casefold(), (args, "origin leaked")
-            if code:
+            if code == 2:
+                # Exit 1 (diff differences) prints its report; only exit 2 is silent.
                 assert not result.stdout, (args, "errors must go to stderr")
                 assert result.stderr.strip(), (args, "failure requires a stderr diagnostic")
             else:
@@ -661,6 +662,113 @@ def main():
             elapsed = time.monotonic() - started
             assert 9 <= elapsed < 14, ("TLS handshake must share ten-second deadline", elapsed)
         assert len(server.connections) == 1 and not server.requests
+
+        # Stage 3: record and diff end to end. Bodies live in the baseline file
+        # only; process output carries IDs, statuses, kinds and counts.
+        record_cases = case("record-cases.jsonl",
+                            '{"id":"j","method":"GET","path":"/j"}\n' + '{"id":"t","method":"GET","path":"/t"}')
+        big_number = b'{"v":9007199254740993}'
+        def record_reply(server, connection, request, index):
+            if request["target"] == "/j":
+                return response(server, connection, big_number,
+                                headers=[("Content-Type", "application/json")])
+            return response(server, connection, b"payload-do-not-print")
+        def record(path, server, out, extra=(), code=0, contains="", stdout=None):
+            return run(["record", path, "--base-url", server.origin, "--out", out, *extra],
+                       code, contains, stdout=stdout, forbidden=(server.origin,))
+        def diff(path, server, baseline, extra=(), code=0, contains="", stdout=None):
+            return run(["diff", path, "--base-url", server.origin, "--baseline", baseline, *extra],
+                       code, contains, stdout=stdout, forbidden=(server.origin,))
+
+        baseline_path = str(root / "baseline.json")
+        with Loopback(record_reply) as server:
+            record(record_cases, server, baseline_path, extra=["--body", "auto"],
+                   stdout=["RECORDED: 2 case(s)"])
+        stored = json.loads(Path(baseline_path).read_text(encoding="utf-8"))
+        assert stored["version"] == 1 and stored["body_mode"] == "auto"
+        assert stored["records"][0]["id"] == "j"
+        assert stored["records"][0]["status"] == 200
+        assert stored["records"][0]["fingerprint"].startswith("sha256:")
+        assert len(stored["records"][0]["fingerprint"]) == 71
+        assert stored["records"][0]["body"]["value"]["v"] == 9007199254740993
+        record(record_cases, Loopback(record_reply).__enter__() if False else record_reply and baseline_path and None or None, baseline_path) if False else None
+        with Loopback(record_reply) as server:
+            record(record_cases, server, baseline_path, code=2, contains="baseline already exists")
+            diff(record_cases, server, baseline_path, stdout=[
+                "IDENTICAL: 2 case(s); no differences"])
+        # Matching is by ID plus fingerprint, so a different origin works.
+        with Loopback(record_reply) as other:
+            diff(record_cases, other, baseline_path,
+                 stdout=["IDENTICAL: 2 case(s); no differences"])
+        # A changed number with preserved digits differs exactly once.
+        def changed_number(server, connection, request, index):
+            if request["target"] == "/j":
+                return response(server, connection, b'{"v":9007199254740992}',
+                                headers=[("Content-Type", "application/json")])
+            return response(server, connection, b"payload-do-not-print")
+        with Loopback(changed_number) as server:
+            diff(record_cases, server, baseline_path, code=1, stdout=[
+                "DIFF: 2 case(s); 1 difference(s)",
+                "j body json: 1 difference(s)",
+            ])
+            diff(record_cases, server, baseline_path, extra=["--format", "json"],
+                 code=1, contains='"differences":1')
+        def changed_status(server, connection, request, index):
+            if request["target"] == "/j":
+                return response(server, connection, big_number,
+                                headers=[("Content-Type", "application/json")])
+            return response(server, connection, b"payload-do-not-print", status=500)
+        with Loopback(changed_status) as server:
+            diff(record_cases, server, baseline_path, code=1, stdout=[
+                "DIFF: 2 case(s); 1 difference(s)",
+                "t status: 200 -> 500",
+            ])
+        # Ignored subtrees mask json differences; invalid pointers are config errors.
+        with Loopback(changed_number) as server:
+            diff(record_cases, server, baseline_path, extra=["--ignore", "/v"],
+                 stdout=["IDENTICAL: 2 case(s); no differences"])
+            diff(record_cases, server, baseline_path, extra=["--ignore", "bad"],
+                 code=2, contains="ignore flag 1")
+        # Corrupted baselines and changed requests fail before any connection.
+        tampered = json.loads(Path(baseline_path).read_text(encoding="utf-8"))
+        tampered["version"] = 2
+        tampered_path = case("tampered.jsonl", json.dumps(tampered))
+        mismatched = suite("mismatched.jsonl", [
+            {"id": "j", "method": "GET", "path": "/changed"},
+            {"id": "t", "method": "GET", "path": "/t"},
+        ])
+        with Loopback(record_reply) as server:
+            diff(record_cases, server, tampered_path, code=2, contains="version")
+            diff(mismatched, server, baseline_path, code=2,
+                 contains="no longer matches")
+            assert not server.requests, "config errors must not connect"
+        # A transport failure after differences stays silent on stdout with exit 2.
+        def failing_second(server, connection, request, index):
+            if index == 1:
+                return False
+            return response(server, connection, big_number,
+                            headers=[("Content-Type", "application/json")])
+        with Loopback(failing_second) as server:
+            diff(record_cases, server, baseline_path, code=2)
+        # Status-only mode records no bodies; body-only changes stay identical.
+        none_baseline = str(root / "none.jsonl.baseline")
+        with Loopback(record_reply) as server:
+            record(record_cases, server, none_baseline)
+        none_stored = json.loads(Path(none_baseline).read_text(encoding="utf-8"))
+        assert none_stored["body_mode"] == "none"
+        assert all("body" not in record for record in none_stored["records"])
+        with Loopback(changed_number) as server:
+            diff(record_cases, server, none_baseline,
+                 stdout=["IDENTICAL: 2 case(s); no differences"])
+        # --force replaces; failed writes leave no temporary files behind.
+        with Loopback(record_reply) as server:
+            record(record_cases, server, baseline_path, extra=["--force"],
+                   stdout=["RECORDED: 2 case(s)"])
+            absent = str(root / "absent-cases.jsonl")
+            record(absent, server, str(root / "never.jsonl"), code=2)
+        assert not list(root.glob("*.reqdiff-tmp-*")), "temporary files leaked"
+        secrets = (*secrets, "payload-do-not-print")
+
         print(f"CLI smoke: {checks} checks passed")
 
 

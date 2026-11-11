@@ -1,39 +1,4 @@
 ///|
-suberror InputFailure {
-  InputFailure(String)
-}
-
-///|
-async fn read_cases(path : String) -> String {
-  let file = @fs.open(path, mode=ReadOnly)
-  defer file.close()
-  if file.kind() != Regular {
-    raise InputFailure("input must be a regular file")
-  }
-  // Read at most the budget plus one byte, even if the file grows after open.
-  let buffer = FixedArray::make(@cases.max_file_bytes + 1, b'\x00')
-  let mut used = 0
-  while used < buffer.length() {
-    let count = file.read_into(
-      buffer,
-      offset=used,
-      max_len=buffer.length() - used,
-    )
-    if count == 0 {
-      break
-    }
-    used += count
-  }
-  if used > @cases.max_file_bytes {
-    raise InputFailure("input exceeds 5 MiB")
-  }
-  let bytes = Bytes::makei(used, i => buffer[i])
-  @utf8.decode(bytes[:]) catch {
-    _ => raise InputFailure("input must be valid UTF-8")
-  }
-}
-
-///|
 async fn emit_error(message : String) -> Unit {
   @stdio.stderr.write(@utf8.encode("reqdiff: \{message}\n")[:]) catch {
     _ => ()
@@ -102,6 +67,149 @@ async fn main {
           }
       }
       println(output)
+    }
+    Record(path, origin, out, body_auto, force, allow_write) => {
+      try {
+        let _ = @cases.validate_origin(origin)
+      } catch {
+        error => {
+          emit_error(error.to_string())
+          @env.exit(2)
+        }
+      }
+      if @fs.exists(out) && !force {
+        emit_error("baseline already exists; use --force")
+        @env.exit(2)
+      }
+      let text = read_cases(path) catch {
+        InputFailure(message) => {
+          emit_error(message)
+          @env.exit(2)
+        }
+        _ => {
+          emit_error("cannot read input file")
+          @env.exit(2)
+        }
+      }
+      let env = @env.get_env_vars()
+      let mode = if body_auto {
+        @baseline.AutoBodies
+      } else {
+        @baseline.NoBodies
+      }
+      let records = @runner.capture(text, origin, env, mode~, allow_write~) catch {
+        @cases.InvalidInput(line, field, reason) => {
+          emit_error("line \{line}, field \{field}: \{reason}")
+          @env.exit(2)
+        }
+        @runner.Failed(line, reason) => {
+          emit_error("line \{line}, field request: \{reason}")
+          @env.exit(2)
+        }
+        _ => {
+          emit_error("request execution failed")
+          @env.exit(2)
+        }
+      }
+      let content = @utf8.encode(
+        @baseline.encode(@baseline.Baseline::make(mode, records)),
+      )
+      write_baseline_atomic(out, content, force) catch {
+        InputFailure(message) => {
+          emit_error(message)
+          @env.exit(2)
+        }
+        _ => {
+          emit_error("cannot write baseline")
+          @env.exit(2)
+        }
+      }
+      println("RECORDED: \{records.length()} case(s)")
+    }
+    Diff(path, origin, baseline_path, ignores, format, allow_write) => {
+      try {
+        let _ = @cases.validate_origin(origin)
+      } catch {
+        error => {
+          emit_error(error.to_string())
+          @env.exit(2)
+        }
+      }
+      let baseline_text = read_baseline(baseline_path) catch {
+        InputFailure(message) => {
+          emit_error(message)
+          @env.exit(2)
+        }
+        _ => {
+          emit_error("cannot read baseline file")
+          @env.exit(2)
+        }
+      }
+      let baseline = @baseline.parse(baseline_text) catch {
+        error => {
+          emit_error(error.to_string())
+          @env.exit(2)
+        }
+      }
+      let text = read_cases(path) catch {
+        InputFailure(message) => {
+          emit_error(message)
+          @env.exit(2)
+        }
+        _ => {
+          emit_error("cannot read input file")
+          @env.exit(2)
+        }
+      }
+      let env = @env.get_env_vars()
+      let (_, cases) = @runner.preflight(text, origin, env, allow_write~) catch {
+        error => {
+          emit_error(error.to_string())
+          @env.exit(2)
+        }
+      }
+      // Configuration errors must surface before any connection is made.
+      @baseline.check_match(baseline, cases) catch {
+        error => {
+          emit_error(error.to_string())
+          @env.exit(2)
+        }
+      }
+      let pointers = @compare.compile_ignores(ignores) catch {
+        error => {
+          emit_error(error.to_string())
+          @env.exit(2)
+        }
+      }
+      let observed = @runner.capture_cases(
+        origin,
+        cases,
+        env,
+        mode=@baseline.Baseline::mode(baseline),
+      ) catch {
+        @runner.Failed(line, reason) => {
+          emit_error("line \{line}, field request: \{reason}")
+          @env.exit(2)
+        }
+        _ => {
+          emit_error("request execution failed")
+          @env.exit(2)
+        }
+      }
+      let report = @compare.compare(
+        @baseline.Baseline::records(baseline),
+        observed,
+        pointers,
+      )
+      let output = if format == "json" {
+        @report.render_json(report)
+      } else {
+        @report.render_terminal(report)
+      }
+      println(output)
+      if report.total_differences > 0 {
+        @env.exit(1)
+      }
     }
   }
 }
