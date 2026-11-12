@@ -10,6 +10,15 @@ import sys
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def module_version():
+    """Read the module version from moon.mod; keep the CLI in sync manually."""
+    for line in (ROOT / "moon.mod").read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if line.startswith("version"):
+            return line.split("=", 1)[1].strip().strip('"')
+    raise RuntimeError("moon.mod has no version field")
+
+
 def run(arguments, cwd, timeout=180):
     result = subprocess.run(arguments, cwd=cwd, capture_output=True, text=True,
                             encoding="utf-8", errors="replace", timeout=timeout)
@@ -19,8 +28,9 @@ def run(arguments, cwd, timeout=180):
 
 
 def main():
+    version = module_version()
     run(["moon", "package", "--list"], ROOT)
-    archive = ROOT / "_build" / "publish" / "miunerofrade-reqdiff-0.1.0.zip"
+    archive = ROOT / "_build" / "publish" / f"miunerofrade-reqdiff-{version}.zip"
     with tempfile.TemporaryDirectory(prefix="reqdiff-package-") as directory:
         temporary = Path(directory)
         source = temporary / "source"

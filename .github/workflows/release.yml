@@ -1,0 +1,82 @@
+name: release candidate
+on:
+  workflow_dispatch:
+    inputs:
+      platform_note:
+        description: "Optional note recorded in the run summary (not published)"
+        required: false
+        default: ""
+permissions:
+  contents: read
+jobs:
+  candidate:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux-x64
+          - os: windows-latest
+            platform: windows-x64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install stable MoonBit SDK (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash -s latest
+      - name: Install stable MoonBit SDK (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: irm https://cli.moonbitlang.com/install/powershell.ps1 | iex
+      - name: Add MoonBit to PATH (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: printf '%s\n' "$HOME/.moon/bin" >> "$GITHUB_PATH"
+      - name: Add MoonBit to PATH (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $moonBin = Join-Path $HOME '.moon\bin'
+          Add-Content -Path $env:GITHUB_PATH -Value $moonBin -Encoding utf8
+          if (-not (Test-Path (Join-Path $moonBin 'moon.exe'))) {
+            throw "moon.exe not found in $moonBin"
+          }
+      - name: SDK versions
+        shell: pwsh
+        run: |
+          Get-Command moon
+          moon version --all
+      - name: Native compiler environment (Windows)
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+      - name: Release build
+        run: moon build --target native --release --deny-warn
+      - name: Release tests
+        run: moon test --target native --release --deny-warn
+      - name: Candidate version check
+        shell: bash
+        run: |
+          binary=$(find _build/native/release/build -type f \( -name reqdiff.exe -o -name reqdiff \) | head -n 1)
+          test -n "$binary"
+          "$binary" --version
+      - name: Candidate demo against installed-style binary
+        run: python -I examples/demo.py _build/native/release/build
+      - name: Assemble candidate archive and checksums
+        shell: bash
+        run: |
+          binary=$(find _build/native/release/build -type f \( -name reqdiff.exe -o -name reqdiff \) | head -n 1)
+          python -I scripts/release_package.py --platform ${{ matrix.platform }} "$binary" candidates
+      - name: Verify archive contents and checksum
+        shell: bash
+        run: |
+          archive=$(find candidates -name '*.tar.gz' | head -n 1)
+          test -n "$archive"
+          tar -tzf "$archive"
+          sha256sum -c "$archive.sha256" && echo "Checksum verified: $archive"
+      - name: Record candidate location
+        shell: bash
+        run: |
+          echo "Candidate archives stay inside the workflow workspace." >> "$GITHUB_STEP_SUMMARY"
+          echo "Publishing a release, tag or binary requires separate authorization." >> "$GITHUB_STEP_SUMMARY"
+          ls -l candidates >> "$GITHUB_STEP_SUMMARY"

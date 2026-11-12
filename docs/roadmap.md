@@ -37,7 +37,9 @@ Progress reflects working code and actual checks. No fixed commit quota.
 - [x] README for the complete workflow; recorded Windows/Ubuntu CI evidence.
 - [x] Local CLI installation and source package inspection/isolated installation check.
 - [x] CI definitions for the demo and source package verification.
-- [ ] Observe hosted CI for the review/delivery changes after the next authorized push.
+- [x] Release candidate workflow (manual dispatch) building/testing Windows x64 and Linux x64 archives with checksums, without publishing.
+- [x] CHANGELOG recording capabilities, fixes and known limitations.
+- [x] Hosted CI green for the review/delivery changes ([run 43245838411](https://github.com/miunerofrade/reqdiff/actions/runs/43245838411)); each future push needs its own fresh run.
 - [ ] Verify Mooncakes registry publication/consumption when publication is authorized.
 - [ ] Select release version, resolve SDK pinning and publish tested platform binaries/checksums with approval.
 - [ ] Separate entrant-authored contest application; never submit these AI-assisted engineering notes as that application.

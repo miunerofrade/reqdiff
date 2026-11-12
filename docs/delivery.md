@@ -39,9 +39,22 @@ python -I examples/demo.py _build/native/debug/build
 
 It verifies record = 0, identical = 0, changed JSON = 1, explicitly ignored field = 0, and changed request configuration = 2 with zero additional requests. All listeners and files are temporary.
 
+## Release candidate workflow
+
+`.github/workflows/release.yml` is a manual (`workflow_dispatch`) candidate pipeline for Windows x64 and Linux x64. On each platform it builds with `--release`, runs release tests, checks `--version`, runs the five-step demo against the release build, and assembles a versioned archive (executable plus LICENSE, README, CHANGELOG, spec and delivery notes) with a SHA-256 checksum file. The workflow verifies archive contents and the checksum itself. Candidates stay inside the workflow workspace: the pipeline does not create a GitHub Release, tag, or upload artifacts anywhere. Running it is verification only, not publication.
+
+Locally, the same packaging step is available:
+
+```sh
+python -I scripts/release_package.py --platform windows-x64 \
+  _build/native/release/build/cmd/reqdiff/reqdiff.exe <output-directory>
+```
+
+The CLI reports `0.1.0-dev` during development; the module metadata version lives in `moon.mod` (`0.1.0`). Before any formal release, reconcile both with the chosen version and update `CHANGELOG.md`; `tests/package_smoke.py` reads the archive name from `moon.mod`, so packaging follows the metadata version automatically.
+
 ## Publication gates still open
 
-- Obtain explicit authorization before pushing, tagging, uploading a binary or publishing to Mooncakes.
+- Obtain explicit authorization before pushing, tagging, uploading a binary or publishing to Mooncakes. The candidate pipeline does not create releases; turning a candidate into one is a separate, authorized step.
 - Choose the actual release version and reconcile CLI/module version strings.
 - Verify the registry namespace, authentication and package policy during the authorized publication step. Local archive installation does not prove registry publication or consumption.
 - Build and test OS/architecture-specific release binaries, document runtime requirements, produce checksums and attach them only after approval. No unsigned binary is described as an official release here.

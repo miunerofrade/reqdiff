@@ -23,7 +23,7 @@ moon install ./src/cmd/reqdiff
 reqdiff --help
 ```
 
-The default installation directory is `~/.moon/bin`; it must be on PATH. To choose another directory, add `--bin <directory>` to `moon install`. Local installation is verified on Windows. Official binary releases and a Mooncakes registry release are not published yet; source archives can be built and installed locally. See [delivery notes](docs/delivery.md).
+The default installation directory is `~/.moon/bin`; it must be on PATH. To choose another directory, add `--bin <directory>` to `moon install`. Local installation is verified on Windows and in CI. Official binary releases and a Mooncakes registry release are not published yet; a manual release-candidate workflow builds tested archives with checksums but does not publish. See [delivery notes](docs/delivery.md).
 
 ## Five-step local demo
 
@@ -133,6 +133,7 @@ Network tests use dynamic loopback ports and synthetic input, with no external A
 - [Stage roadmap](docs/roadmap.md)
 - [Engineering decisions](docs/decisions.md)
 - [Delivery notes](docs/delivery.md)
+- [Changelog](CHANGELOG.md)
 
 These engineering documents are AI-assisted, not the contest application.
 
