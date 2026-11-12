@@ -77,7 +77,13 @@ async fn main {
           @env.exit(2)
         }
       }
-      if @fs.exists(out) && !force {
+      let exists = @fs.exists(out) catch {
+        _ => {
+          emit_error("cannot inspect baseline target")
+          @env.exit(2)
+        }
+      }
+      if exists && !force {
         emit_error("baseline already exists; use --force")
         @env.exit(2)
       }
@@ -111,9 +117,21 @@ async fn main {
           @env.exit(2)
         }
       }
-      let content = @utf8.encode(
-        @baseline.encode(@baseline.Baseline::make(mode, records)),
-      )
+      let encoded = @baseline.encode(@baseline.Baseline::make(mode, records))
+      let content = @utf8.encode(encoded)
+      if content.length() > @baseline.max_baseline_bytes {
+        emit_error("encoded baseline exceeds 32 MiB")
+        @env.exit(2)
+      }
+      // Never publish a baseline that the strict reader cannot consume.
+      try {
+        let _ = @baseline.parse(encoded)
+      } catch {
+        error => {
+          emit_error(error.to_string())
+          @env.exit(2)
+        }
+      }
       write_baseline_atomic(out, content, force) catch {
         InputFailure(message) => {
           emit_error(message)

@@ -24,6 +24,113 @@ fn wb_json_record(
 }
 
 ///|
+fn wb_json_changes(
+  left : String,
+  right : String,
+  ignores : Array[String],
+) -> Int32 raise {
+  let report = compare(
+    [wb_json_record(json=left)],
+    [wb_json_record(json=right)],
+    compile_ignores(ignores),
+  )
+  if report.total_differences == 0 {
+    return 0
+  }
+  match report.records[0].differences[0] {
+    JsonBodyDifference(count) => count
+    _ => fail("expected JSON body difference")
+  }
+}
+
+///|
+test "negative zero exponents normalize before decimal shifts" {
+  for
+    (left, right) in [
+      ("1e-0", "1"),
+      ("1e-000", "1e+000"),
+      ("1.25e-0", "1.25"),
+      ("100e-0", "1e2"),
+      ("-100e-000", "-1e2"),
+      ("-0e-000", "0"),
+      ("10e99999999999999999999", "1e100000000000000000000"),
+      ("10e-100000000000000000000", "1e-99999999999999999999"),
+    ] {
+    assert_eq(wb_json_changes(left, right, []), 0)
+    assert_eq(wb_json_changes(right, left, []), 0)
+  }
+  assert_eq(wb_json_changes("1e-0", "1e-1", []), 1)
+}
+
+///|
+test "ignored missing object fields are symmetric" {
+  for
+    (left, right) in [
+      ("{\"a\":1}", "{}"),
+      ("{\"a\":null}", "{}"),
+      ("{\"a\":{\"nested\":1}}", "{}"),
+      ("{\"outer\":{\"a\":1}}", "{\"outer\":{}}"),
+    ] {
+    assert_eq(wb_json_changes(left, right, ["/a", "/outer/a"]), 0)
+    assert_eq(wb_json_changes(right, left, ["/a", "/outer/a"]), 0)
+    assert_eq(wb_json_changes(left, right, []), 1)
+    assert_eq(wb_json_changes(right, left, []), 1)
+  }
+  assert_eq(wb_json_changes("{\"a\":1}", "{}", ["/a/nested"]), 1)
+}
+
+///|
+test "ignored array tails are symmetric and preserve original indexes" {
+  assert_eq(wb_json_changes("[1]", "[1,2]", ["/1"]), 0)
+  assert_eq(wb_json_changes("[1,2]", "[1]", ["/1"]), 0)
+  assert_eq(wb_json_changes("[]", "[1]", ["/0"]), 0)
+  assert_eq(wb_json_changes("[1]", "[]", ["/0"]), 0)
+  assert_eq(wb_json_changes("[1]", "[1,2,3]", ["/1"]), 1)
+  assert_eq(wb_json_changes("[1,2,3]", "[1]", ["/1"]), 1)
+  assert_eq(wb_json_changes("[1]", "[1,2,3]", []), 2)
+  assert_eq(wb_json_changes("[1,2,3]", "[1]", []), 2)
+  // Even with unequal lengths, differences at shared indexes remain visible.
+  assert_eq(wb_json_changes("[1]", "[9,2]", ["/1"]), 1)
+  assert_eq(wb_json_changes("[9,2]", "[1]", ["/1"]), 1)
+  assert_eq(wb_json_changes("[1,2]", "[2]", ["/0"]), 1)
+  assert_eq(wb_json_changes("[2]", "[1,2]", ["/0"]), 1)
+  assert_eq(wb_json_changes("[1]", "[1,{}]", ["/1/x"]), 1)
+}
+
+///|
+test "numeric and hyphen pointer tokens match object keys at every depth" {
+  for key in ["01", "-", "0abc"] {
+    let left = "{\"\{key}\":1}"
+    let right = "{\"\{key}\":2}"
+    assert_eq(wb_json_changes(left, right, ["/\{key}"]), 0)
+    assert_eq(wb_json_changes(left, "{}", ["/\{key}"]), 0)
+    assert_eq(wb_json_changes("{}", left, ["/\{key}"]), 0)
+    assert_eq(wb_json_changes(left, right, []), 1)
+  }
+  let left = "{\"01\":{\"-\":{\"0abc\":1}}}"
+  let right = "{\"01\":{\"-\":{\"0abc\":2}}}"
+  assert_eq(wb_json_changes(left, right, ["/01/-/0abc"]), 0)
+  assert_eq(wb_json_changes(left, right, ["/01/other/0abc"]), 1)
+  assert_eq(wb_json_changes(left, right, ["/other/-/0abc"]), 1)
+}
+
+///|
+test "noncanonical array tokens are no-ops in every position" {
+  for token in ["01", "-", "0abc", "00", "", "99999999999999999999"] {
+    assert_eq(wb_json_changes("[1,2]", "[1,9]", ["/\{token}"]), 1)
+    assert_eq(wb_json_changes("[1]", "[1,9]", ["/\{token}"]), 1)
+    assert_eq(wb_json_changes("[1,9]", "[1]", ["/\{token}"]), 1)
+    assert_eq(wb_json_changes("[{\"x\":1}]", "[{\"x\":2}]", ["/\{token}/x"]), 1)
+    assert_eq(
+      wb_json_changes("{\"a\":[1,2]}", "{\"a\":[1,9]}", ["/a/\{token}"]),
+      1,
+    )
+  }
+  assert_eq(wb_json_changes("[{\"01\":1}]", "[{\"01\":2}]", ["/0/01"]), 0)
+  assert_eq(wb_json_changes("{\"01\":[1,2]}", "{\"01\":[1,9]}", ["/01/1"]), 0)
+}
+
+///|
 test "numbers compare by exact decimal value" {
   fn differing(left : String, right : String) -> Bool {
     let report = compare(
@@ -52,12 +159,15 @@ test "numbers compare by exact decimal value" {
 
 ///|
 test "pointer compilation is strict RFC 6901" {
-  let accepted = ["", "/a", "/a/b", "/~0/~1", "/0", "/", "/array/0", "/a/"]
+  let accepted = [
+    "", "/a", "/a/b", "/~0/~1", "/0", "/", "/array/0", "/a/", "/01", "/-", "/0abc",
+    "/01/-/0abc", "/a/01/b", "/a/-/b",
+  ]
   for pointer in accepted {
     let compiled = compile_ignores([pointer])
     assert_eq(compiled.length(), 1, msg=pointer)
   }
-  let rejected = ["a", "/01", "/a/-", "/~2", "/~", "/a~0b~"]
+  let rejected = ["a", "/~2", "/~", "/a~0b~", "/a/~2/b", "/a/~/b", "/a/b~"]
   for pointer in rejected {
     let errored = try {
       let _ = compile_ignores([pointer])

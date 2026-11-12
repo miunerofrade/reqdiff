@@ -340,7 +340,8 @@ def main():
                    "reason-do-not-print", "env-control-do-not-print",
                    "X-Smoke-Private", "X-Injected", "Authorization",
                    "REQDIFF_SMOKE_TOKEN", "REQDIFF_SMOKE_MISSING",
-                   "REQDIFF_SMOKE_EMPTY", "REQDIFF_SMOKE_CONTROL")
+                   "REQDIFF_SMOKE_EMPTY", "REQDIFF_SMOKE_CONTROL",
+                   "payload-do-not-print")
 
         def run(args, code, contains="", forbidden=(), *, stdout=None, timeout=8, gate=None):
             nonlocal checks
@@ -691,7 +692,6 @@ def main():
         assert stored["records"][0]["fingerprint"].startswith("sha256:")
         assert len(stored["records"][0]["fingerprint"]) == 71
         assert stored["records"][0]["body"]["value"]["v"] == 9007199254740993
-        record(record_cases, Loopback(record_reply).__enter__() if False else record_reply and baseline_path and None or None, baseline_path) if False else None
         with Loopback(record_reply) as server:
             record(record_cases, server, baseline_path, code=2, contains="baseline already exists")
             diff(record_cases, server, baseline_path, stdout=[
@@ -746,7 +746,7 @@ def main():
         def failing_second(server, connection, request, index):
             if index == 1:
                 return False
-            return response(server, connection, big_number,
+            return response(server, connection, b'{"v":9007199254740992}',
                             headers=[("Content-Type", "application/json")])
         with Loopback(failing_second) as server:
             diff(record_cases, server, baseline_path, code=2)
@@ -767,7 +767,17 @@ def main():
             absent = str(root / "absent-cases.jsonl")
             record(absent, server, str(root / "never.jsonl"), code=2)
         assert not list(root.glob("*.reqdiff-tmp-*")), "temporary files leaked"
-        secrets = (*secrets, "payload-do-not-print")
+        # Reach publication failure after a successful capture, not input preflight.
+        blocked = root / "blocked-target"
+        blocked.mkdir()
+        marker = blocked / "old"
+        marker.write_text("keep", encoding="utf-8")
+        with Loopback(record_reply) as server:
+            record(record_cases, server, str(blocked), extra=["--force"], code=2,
+                   contains="cannot write baseline")
+            assert len(server.requests) == 2, "fixture must reach baseline publication"
+        assert marker.read_text(encoding="utf-8") == "keep"
+        assert not list(root.glob("*.reqdiff-tmp-*")), "failed rename leaked a temporary file"
 
         print(f"CLI smoke: {checks} checks passed")
 

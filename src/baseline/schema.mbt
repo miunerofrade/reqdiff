@@ -76,13 +76,20 @@ fn valid_fingerprint(value : String) -> Bool {
 ///|
 fn integral(value : @json.Json) -> Int32? {
   match value {
-    Number(number, ..) => {
-      let whole = number.to_int()
-      if whole.to_double() == number {
-        Some(whole)
-      } else {
-        None
+    Number(_, repr=Some(text)) => {
+      // Metadata uses canonical unsigned integer tokens, never rounded Doubles.
+      let chars = text.to_array()
+      if chars.is_empty() || chars.length() > 3 {
+        return None
       }
+      let mut whole = 0
+      for c in chars {
+        if c < '0' || c > '9' {
+          return None
+        }
+        whole = whole * 10 + c.to_int() - 48
+      }
+      Some(whole)
     }
     _ => None
   }
@@ -152,6 +159,9 @@ fn parse_body(
       Empty
     }
     "json" => {
+      if obj.length() != 2 || obj.contains("text") {
+        invalid(index, "body", "json body permits only kind and value")
+      }
       let value = match obj.get("value") {
         Some(value) => value
         None => {
@@ -162,6 +172,9 @@ fn parse_body(
       JsonBody(value)
     }
     "text" => {
+      if obj.length() != 2 || obj.contains("value") {
+        invalid(index, "body", "text body permits only kind and text")
+      }
       let text = match obj.get("text") {
         Some(String(text)) => text
         _ => {
@@ -209,11 +222,8 @@ pub fn parse(text : String) -> Baseline raise BaselineError {
     }
   }
   match obj.get("version") {
-    Some(Number(number, ..)) =>
-      if number != 1.0 {
-        invalid(0, "version", "only baseline version 1 is supported")
-      }
-    _ => invalid(0, "version", "must be the number 1")
+    Some(Number(_, repr=Some("1"))) => ()
+    _ => invalid(0, "version", "must be the integer token 1")
   }
   let mode = match obj.get("body_mode") {
     Some(String("none")) => NoBodies
@@ -329,17 +339,18 @@ pub fn check_match(
   baseline : Baseline,
   cases : Array[@cases.Case],
 ) -> Unit raise BaselineError {
-  let recorded : Map[String, String] = Map([])
+  let recorded : Map[String, Record] = Map([])
   for record in baseline.records {
-    recorded.set(record.id, record.fingerprint)
+    recorded.set(record.id, record)
   }
   let present : Map[String, Bool] = Map([])
   for case in cases {
     present.set(case.id, true)
     match recorded.get(case.id) {
       None => raise RequestMismatch(case.source_line)
-      Some(fingerprint) =>
-        if fingerprint != request_fingerprint(case) {
+      Some(record) =>
+        if record.meth != case.meth ||
+          record.fingerprint != request_fingerprint(case) {
           raise RequestMismatch(case.source_line)
         }
     }

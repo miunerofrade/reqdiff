@@ -12,6 +12,11 @@ import {
   "moonbitlang/core/encoding/utf8",
 }
 
+#cfg(target="native")
+import {
+  "moonbitlang/core/async/process",
+} for "wbtest"
+
 pkgtype(kind: "executable")
 
 options(

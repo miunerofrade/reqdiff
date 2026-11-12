@@ -18,7 +18,7 @@ Open only a regular file and read a maximum of 5 MiB plus one byte. No check-siz
 
 ## D005 — Test-only local TLS adapter
 
-SDK HTTP server currently exposes plain TCP. HTTPS probes use a minimal core TCP+TLS fixture. Its internal-testing-only constructor is narrowly warning-suppressed on the two fixture declarations, not globally and never in product code. PEM/PFX/key fixtures are intentionally PUBLIC synthetic localhost material, not production credentials. PFX password is empty. Test CA must never be installed into the machine trust store. Certificates expire 2036; rotate fixtures before expiry. Linux/macOS adapter was checked against SDK source, but only Windows runtime was verified locally.
+SDK HTTP server currently exposes plain TCP. HTTPS probes use a minimal core TCP+TLS fixture. Its internal-testing-only constructor is narrowly warning-suppressed on the two fixture declarations, not globally and never in product code. PEM/PFX/key fixtures are intentionally PUBLIC synthetic localhost material, not production credentials. PFX password is empty. Test CA must never be installed into the machine trust store. Certificates expire 2036; rotate fixtures before expiry. Windows runtime was verified locally; the stage 3 hosted Windows/Ubuntu run also passed the TLS fixtures. macOS remains untested.
 
 ## D006 — Work history and publication
 
@@ -35,3 +35,11 @@ HTTP statuses are data, including redirects and errors; stage 2 has no expected-
 Bodies are captured only with explicit `--body auto`; the default records statuses, so casual recording does not persist business data. Response bodies stay out of all terminal/JSON reports even when captured into a baseline file. Request identity uses a SHA-256 digest over a canonical non-secret projection (method, validated path, literal non-credential headers, body kind/content); env/credential headers are excluded. SHA-256 is implemented in-tree from FIPS 180-4 and tested against the official NIST vectors — no third-party crypto dependency and no homemade cipher. A digest is not redaction; baselines remain private.
 
 Number equality never goes through Double. The parser preserves number text, and comparison canonicalizes sign/digits/exponent with pure string arithmetic, so `1`, `1.0`, `1e0` and `-0` behave as specified and 9007199254740992/9007199254740993 differ. JSON Pointer ignores skip subtrees symmetrically instead of deleting elements, keeping array indexes stable. Baseline writing uses create-new temp file, sync, then rename; the preflight refuses existing targets without `--force` before connecting, and a failed publish leaves no partial file. Exit precedence is 2 over 1 over 0: configuration and execution errors suppress stdout even when differences were already found, because a partially observed diff must not look authoritative.
+
+## D009 — Review corrections and delivery checks
+
+Baseline metadata version/status use exact integer tokens, not rounded Double validation. Body schemas are kind-specific; unused cross-kind fields are errors. Request matching checks the stored method as well as the digest. Pointer compilation validates RFC 6901 syntax without guessing container types: object keys `01` and `-` are legal, while array matching uses canonical index tokens only. Ignored single-sided object members and array items are masked at their original paths; indexes never shift.
+
+Temporary files are allocated atomically with CreateNew, retrying fresh names without removing another writer's file. Use mode 0600 at creation, explicitly close before rename, and clean up owned files with defer on failure/cancellation. Input handling checks the path kind before open and the handle kind afterwards, with a bounded cancellable open. The pre-check is not a TOCTOU-free sandbox; file names/directories must remain under the caller's control.
+
+The five-step demo uses Python only to start a synthetic loopback API and invoke the real executable. A separate package smoke check installs from the locally generated source archive into a temporary directory and runs the same demo. These checks prepare distribution without uploading to a registry or releasing a binary.

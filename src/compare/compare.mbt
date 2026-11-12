@@ -22,25 +22,6 @@ fn invalid_pointer(ordinal : Int32, reason : String) -> Unit raise CompareError 
 }
 
 ///|
-fn canonical_index(token : String, ordinal : Int32) -> Unit raise CompareError {
-  // Array indexes must be canonical: "0" is fine, "01" and "-" are not.
-  if token is "-" {
-    invalid_pointer(ordinal, "array index hyphen is not a pointer")
-  }
-  let chars = token.to_array()
-  if chars.length() > 1 && chars[0] == '0' {
-    invalid_pointer(ordinal, "array index has a leading zero")
-  }
-  for c in chars {
-    let n = c.to_int()
-    if n < 48 || n > 57 {
-      // Non-digit tokens are object keys; nothing to enforce here.
-      return
-    }
-  }
-}
-
-///|
 fn compile_pointer(
   text : String,
   ordinal : Int32,
@@ -82,11 +63,7 @@ fn compile_pointer(
   if escaped {
     invalid_pointer(ordinal, "dangling tilde escape")
   }
-  let token = builder.to_string()
-  if token.length() > 0 && token != "0" {
-    canonical_index(token, ordinal)
-  }
-  tokens.push(token)
+  tokens.push(builder.to_string())
   Pointer::{ tokens, }
 }
 
@@ -267,6 +244,9 @@ fn canonical_number(repr : String) -> String {
       i += 1
     }
     exp_digits = strip_leading_zeros(raw)
+    if exp_digits.length() == 1 && exp_digits[0] == '0' {
+      exp_neg = false
+    }
   }
   if frac_len > 0 {
     let frac = int_to_digits(frac_len)
@@ -375,32 +355,38 @@ fn diff_json(
   match (a, b) {
     (Object(ma), Object(mb)) => {
       for key, _ in ma {
-        if !mb.contains(key) {
+        if !mb.contains(key) &&
+          !ignores.contains(path_key(extend_path(path, key))) {
           count_difference(counter)
         }
       }
       for key, vb in mb {
+        let child_path = extend_path(path, key)
         match ma.get(key) {
-          Some(va) =>
-            diff_json(va, vb, extend_path(path, key), ignores, counter)
-          None => count_difference(counter)
+          Some(va) => diff_json(va, vb, child_path, ignores, counter)
+          None =>
+            if !ignores.contains(path_key(child_path)) {
+              count_difference(counter)
+            }
         }
       }
     }
-    (Array(aa), Array(ab)) =>
-      if aa.length() != ab.length() {
-        count_difference(counter)
+    (Array(aa), Array(ab)) => {
+      let length = if aa.length() > ab.length() {
+        aa.length()
       } else {
-        for i, va in aa {
-          diff_json(
-            va,
-            ab[i],
-            extend_path(path, i.to_string()),
-            ignores,
-            counter,
-          )
+        ab.length()
+      }
+      for i in 0..<length {
+        // Canonical index paths cannot match tokens such as "01" or "-".
+        let child_path = extend_path(path, i.to_string())
+        if i < aa.length() && i < ab.length() {
+          diff_json(aa[i], ab[i], child_path, ignores, counter)
+        } else if !ignores.contains(path_key(child_path)) {
+          count_difference(counter)
         }
       }
+    }
     (Number(na, repr=repra), Number(nb, repr=reprb)) =>
       if number_key(na, repra) != number_key(nb, reprb) {
         count_difference(counter)

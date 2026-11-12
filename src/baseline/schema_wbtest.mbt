@@ -70,11 +70,19 @@ test "encode and parse round trip for both body modes" {
 ///|
 test "parse rejects malformed baselines" {
   let good = encode(Baseline::make(NoBodies, [wb_record()]))
+  let json_body = encode(
+    Baseline::make(AutoBodies, [wb_record(body=JsonBody(@json.null))]),
+  )
+  let text_body = encode(
+    Baseline::make(AutoBodies, [wb_record(body=TextBody("ok"))]),
+  )
   let a_digest = "sha256:\{sha256_hex(@utf8.encode("a"))}"
   let rejects : Array[String] = [
     "",
     "{}",
     "[]",
+    swap(json_body, "\"kind\":\"json\"", "\"kind\":\"json\",\"text\":\"lost\""),
+    swap(text_body, "\"kind\":\"text\"", "\"kind\":\"text\",\"value\":123"),
     swap(good, "\"records\"", "\"extra\":0,\"records\""),
     swap(good, "\"version\":1", "\"version\":2"),
     swap(good, "\"version\":1", "\"version\":\"1\""),
@@ -88,6 +96,9 @@ test "parse rejects malformed baselines" {
     swap(good, "\"status\":200", "\"status\":199"),
     swap(good, "\"status\":200", "\"status\":600"),
     swap(good, "\"status\":200", "\"status\":20.5"),
+    swap(good, "\"status\":200", "\"status\":200.00000000000000001"),
+    swap(good, "\"version\":1", "\"version\":1.0000000000000001"),
+    swap(good, "\"version\":1", "\"version\":1e0"),
     swap(
       good, "\"records\":[{", "\"records\":[{\"body\":{\"kind\":\"empty\"},{",
     ),
@@ -133,6 +144,24 @@ test "check match requires identical id sets and fingerprints" {
   })
   // Reordered records still match.
   check_match(Baseline::make(NoBodies, [records[1], records[0]]), cases)
+  let altered_method = Record::make(
+    records[0].id,
+    "POST",
+    records[0].fingerprint,
+    200,
+    Uncaptured,
+  )
+  let method_rejected = try {
+    check_match(Baseline::make(NoBodies, [altered_method, records[1]]), cases)
+    false
+  } catch {
+    RequestMismatch(line) => {
+      assert_eq(line, 1)
+      true
+    }
+    error => raise error
+  }
+  assert_true(method_rejected)
   // Missing baseline entry.
   let rejected_missing = try {
     check_match(Baseline::make(NoBodies, [records[0]]), cases)
