@@ -1,39 +1,45 @@
 # Delivery stages
 
-Progress reflects working code, not intended features. No fixed commit quota.
+Progress reflects working code and actual checks. No fixed commit quota.
 
 ## Stage 0 — foundations
 
-- [x] Update and record actual SDK; native core API inspection.
-- [x] Independent project/Git directory and private notes moved outside repository.
-- [x] JSON/argparse/fs/http reuse, license/spec/decisions/development log.
-- [x] Normal native tests for localhost HTTP, bounded reads, cancellation, filesystem cleanup and HTTPS trusted/untrusted CA.
+- [x] Update and record SDK; inspect native core APIs.
+- [x] Independent project/Git directory; private notes outside version control.
+- [x] Reuse core JSON/argparse/fs/http; license, specification and decisions.
+- [x] Localhost HTTP/HTTPS, bounded reads, cancellation and filesystem probes.
 
 ## Stage 1 — offline usable slice
 
 - [x] `--help`, `--version`, `validate`, redacted `plan`.
 - [x] Strict JSONL/schema/environment/origin/header/path/size validation.
-- [x] Pure tests, native CLI subprocess checks, synthetic examples.
-- [x] Windows/Linux native CI definition; actual hosted run pending push/authorization.
-- [x] Review initial commit contents and privacy boundary; keep stages 0/1 as one buildable delivery.
-- [ ] Obtain separate approval before public upload.
+- [x] Pure tests, native CLI subprocess checks and synthetic examples.
+- [x] Windows/Ubuntu CI; [stage 3 run passed on both](https://github.com/miunerofrade/reqdiff/actions/runs/43060730735).
+- [x] Reviewed contents and privacy boundary before the authorized initial public push.
 
 ## Stage 2 — real HTTP execution
 
 - [x] `run` with explicit origin, method opt-in, no retries/redirects.
-- [x] Request lifecycle limits, TLS verification, client cleanup and safe diagnostics.
-- [x] Localhost integration cases for empty/large/delayed/disconnected responses; native debug/release and CLI subprocess verification on Windows.
+- [x] Lifecycle limits, TLS verification, client cleanup and safe diagnostics.
+- [x] Localhost empty/large/delayed/disconnected response integration tests.
 
-## Stage 3 — baseline and diff (not implemented)
+## Stage 3 — baseline and diff
 
-- [ ] Versioned baseline, explicit recording and overwrite protection.
-- [ ] Status/JSON/text comparison and JSON Pointer exclusions.
-- [ ] Safe terminal/JSON reports and mixed error/difference exit code precedence.
-- [ ] Pure numeric policy, missing/null/types/arrays and tampered baseline tests.
+- [x] Versioned baselines, explicit recording and overwrite protection.
+- [x] Status/JSON/text comparison and JSON Pointer exclusions.
+- [x] Redacted terminal/JSON reports and error/difference exit precedence.
+- [x] Exact decimal numeric policy, missing/null/types/arrays and tampered baselines.
+- [x] Review regressions for negative-zero exponents, symmetric ignores of missing nodes, strict metadata/body schema and concurrent writers.
 
-## Stage 4 — complete demo and delivery (not implemented)
+## Stage 4 — demo and delivery preparation
 
-- [ ] Local healthy/broken API demonstration with expected exit codes.
-- [ ] Real Windows/Linux CI results; reproducible install/build instructions.
-- [ ] Verify Mooncakes consumption/publishing and platform binary distribution.
-- [ ] User approval before release/publication; separate entrant-authored application.
+- [x] Five-step localhost healthy/changed API demo with verified exit codes and cleanup.
+- [x] README for the complete workflow; recorded Windows/Ubuntu CI evidence.
+- [x] Local CLI installation and source package inspection/isolated installation check.
+- [x] CI definitions for the demo and source package verification.
+- [ ] Observe hosted CI for the review/delivery changes after the next authorized push.
+- [ ] Verify Mooncakes registry publication/consumption when publication is authorized.
+- [ ] Select release version, resolve SDK pinning and publish tested platform binaries/checksums with approval.
+- [ ] Separate entrant-authored contest application; never submit these AI-assisted engineering notes as that application.
+
+Packaging and local installation are complete preparation steps; registry publication and official binary distribution remain open. See [delivery notes](delivery.md).

@@ -10,7 +10,7 @@ license = "Apache-2.0"
 
 keywords = [ "http", "cli", "testing" ]
 
-description = "Explicit HTTP request collection validation, planning and bounded execution"
+description = "Bounded HTTP request execution, baseline recording and response comparison"
 
 source = "src"
 

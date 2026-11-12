@@ -57,6 +57,10 @@ jobs:
         shell: bash
         run: |
           python -I tests/cli_smoke.py _build/native/debug/build
+      - name: Five-step local demo
+        run: python -I examples/demo.py _build/native/debug/build
+      - name: Source archive and isolated installation
+        run: python -I tests/package_smoke.py
       - name: Formatting and interfaces
         shell: bash
         run: |
